@@ -1,0 +1,81 @@
+#!name=中国移动 去开屏广告
+#!desc=移除中国移动 App(cn.10086.app) 开屏广告、首页弹窗、浮窗与启动埋点。基于 iOS 26 / leadeon 12.5.2 冷启动抓包(153 请求)编写。
+#!author=
+#!system=ios
+#!openUrl=
+#!homepage=
+
+# ============================================================
+# 一、开屏广告（核心）
+# ------------------------------------------------------------
+# startInit 是冷启动第一个业务请求(+2.6s)，早于导航和首页，
+# 开屏/闪屏素材配置由它下发。拦掉后整次启动零 image 请求。
+# 响应体为 AES 密文信封，返回空 200 已实测不影响启动；
+# 若出现异常可改成 reject-dict（返回 {}）对比。
+# ============================================================
+[Rewrite]
+^https?:\/\/client\.app\.coc\.10086\.cn\/biz-orange\/DN\/init\/startInit reject-200
+
+# ---------- 首页弹窗 / 浮窗 / 挽留弹窗（按需注释）----------
+# 首页弹窗排序（决定弹哪些营销弹窗）
+^https?:\/\/client\.app\.coc\.10086\.cn\/biz-orange\/DN\/homepagePopup\/getSortInfo reject-200
+# 运营 Toast 弹窗
+^https?:\/\/client\.app\.coc\.10086\.cn\/biz-orange\/DH\/toast\/august\/(getToast|getPages) reject-200
+^https?:\/\/client\.app\.coc\.10086\.cn\/biz-orange\/DN\/toast\/getToastRule reject-200
+# 退出挽留弹窗
+^https?:\/\/client\.app\.coc\.10086\.cn\/biz-orange\/DN\/detainment\/august\/getPages reject-200
+# 常驻悬浮球 / 浮层入口
+^https?:\/\/client\.app\.coc\.10086\.cn\/biz-orange\/DA\/liveSuspension\/getPageCode reject-200
+# 首页营销换肤（节日氛围图）
+^https?:\/\/client\.app\.coc\.10086\.cn\/biz-orange\/DH\/homeSkin\/getHomeSkin reject-200
+
+# ---------- 千人千面推荐引擎埋点上报 ----------
+^https?:\/\/h\.app\.coc\.10086\.cn\/ngpsie\/psieappaidcsdkserver\/dataReported\/ reject-200
+^https?:\/\/h\.app\.coc\.10086\.cn\/ngpsie\/psieipuudp\/gather\/ reject-200
+
+# ---------- APM / 埋点（走 80/443 的部分）----------
+^https?:\/\/apm\.app\.coc\.10086\.cn\/biz-orange\/D[HN]\/(footmark|dataSeries)\/ reject-200
+^https?:\/\/client\.app\.coc\.10086\.cn\/cache_server\/api\/cache\/encrypt\/reportV2 reject-200
+
+# ============================================================
+# 二、纯遥测域名
+# ------------------------------------------------------------
+# 用 Rule 拦而不用 Rewrite：这些走 7080/8085/9443 等非标端口，
+# DOMAIN 规则不受端口影响，也不需要 MitM。
+# ============================================================
+[Rule]
+# 字节 AppLog / DataRangers 自建埋点 (:7080)
+DOMAIN,dc.cmicapm.com,REJECT
+# 极光统计（注意：也承载 JPush，如需推送请注释本行）
+DOMAIN,jiguang.coc.10086.cn,REJECT
+# APM 性能监控 (:8085)
+DOMAIN,apm.clientaccess.10086.cn,REJECT
+DOMAIN,apm.app.coc.10086.cn,REJECT
+# 移动统一认证日志上报 (:9443)
+DOMAIN,dnlog.cmpassport.com,REJECT
+DOMAIN,log1.cmpassport.com,REJECT
+# 咪咕 / MM 应用商店数据上报
+DOMAIN,da.mmarket.com,REJECT
+# 高德定位 SDK 日志
+DOMAIN,dualstack-logs.amap.com,REJECT
+
+# 数字联盟设备指纹（参数含 duid 设备唯一标识）
+# 只拦日志上报接口，保留 gcf 配置下发，避免触发风控 / 登录异常。
+# 想全拦改用：DOMAIN-SUFFIX,zztfly.com,REJECT
+[Rewrite]
+^https?:\/\/upc\.zztfly\.com\/v5\/gcl reject-200
+^https?:\/\/cfgc\.zztfly\.com\/nndm reject-200
+
+# ============================================================
+# 三、切勿拦截（记录备查）
+# ------------------------------------------------------------
+# /biz-orange/DN/init/getNavigation          底部导航栏
+# /biz-orange/DN/homePage/getTopAreaList     首页主内容(107KB)
+# /biz-orange/DN/multipleInterfaces/aggregationData  首页聚合数据
+# /biz-orange/DH/deployEnvironment/getSignList       环境与签名配置
+# /ServiceControl/SC/secret/getSecretSecurityConfig  加密密钥协商
+# clientaccess.10086.cn/*                    话费/流量/积分查询
+# ============================================================
+
+[MITM]
+hostname = client.app.coc.10086.cn, h.app.coc.10086.cn, apm.app.coc.10086.cn, upc.zztfly.com, cfgc.zztfly.com
